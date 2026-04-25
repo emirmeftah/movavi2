@@ -4,14 +4,18 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
+
+import models
+from database import Base, engine, get_db
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Registration & Tasks API")
 security = HTTPBasic()
 
-users: dict[str, str] = {}
-tasks: dict[str, list[dict]] = {}
-_task_counter = 0
 
+# ---------- Pydantic схемы ----------
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -33,78 +37,108 @@ class TaskUpdate(BaseModel):
     deadline: datetime | None = None
 
 
-class Task(BaseModel):
+class TaskResponse(BaseModel):
     id: int
     title: str
     deadline: datetime
     created_at: datetime
 
+    class Config:
+        from_attributes = True
+
+
+# ---------- Аутентификация ----------
 
 def authenticate(
     credentials: Annotated[HTTPBasicCredentials, Depends(security)],
-) -> str:
-    email = credentials.username
-    if email not in users or users[email] != credentials.password:
+    db: Session = Depends(get_db),
+) -> models.User:
+    user = db.query(models.User).filter(models.User.email == credentials.username).first()
+    if not user or user.password != credentials.password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Basic"},
         )
-    return email
+    return user
 
+
+# ---------- Регистрация ----------
 
 @app.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest) -> RegisterResponse:
-    if payload.email in users:
+def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
+    if db.query(models.User).filter(models.User.email == payload.email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
-    users[payload.email] = payload.password
-    tasks[payload.email] = []
+    user = models.User(email=payload.email, password=payload.password)
+    db.add(user)
+    db.commit()
     return RegisterResponse(email=payload.email, message="User registered successfully")
 
 
-@app.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
+# ---------- Задачи ----------
+
+@app.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(
     payload: TaskCreate,
-    email: Annotated[str, Depends(authenticate)],
-) -> Task:
-    global _task_counter
-    _task_counter += 1
-    task = Task(
-        id=_task_counter,
+    current_user: Annotated[models.User, Depends(authenticate)],
+    db: Session = Depends(get_db),
+) -> TaskResponse:
+    task = models.Task(
         title=payload.title,
         deadline=payload.deadline,
         created_at=datetime.utcnow(),
+        owner_email=current_user.email,
     )
-    tasks[email].append(task.model_dump())
+    db.add(task)
+    db.commit()
+    db.refresh(task)
     return task
 
 
-@app.get("/tasks", response_model=list[Task])
-def list_tasks(email: Annotated[str, Depends(authenticate)]) -> list[Task]:
-    return [Task(**t) for t in tasks[email]]
+@app.get("/tasks", response_model=list[TaskResponse])
+def list_tasks(
+    current_user: Annotated[models.User, Depends(authenticate)],
+    db: Session = Depends(get_db),
+) -> list[TaskResponse]:
+    return db.query(models.Task).filter(models.Task.owner_email == current_user.email).all()
 
 
-@app.patch("/tasks/{task_id}", response_model=Task)
+@app.patch("/tasks/{task_id}", response_model=TaskResponse)
 def update_task(
     task_id: int,
     payload: TaskUpdate,
-    email: Annotated[str, Depends(authenticate)],
-) -> Task:
+    current_user: Annotated[models.User, Depends(authenticate)],
+    db: Session = Depends(get_db),
+) -> TaskResponse:
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")
-    for t in tasks[email]:
-        if t["id"] == task_id:
-            t.update(updates)
-            return Task(**t)
-    raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+    task = (
+        db.query(models.Task)
+        .filter(models.Task.id == task_id, models.Task.owner_email == current_user.email)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+    for key, value in updates.items():
+        setattr(task, key, value)
+    db.commit()
+    db.refresh(task)
+    return task
 
 
 @app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: int, email: Annotated[str, Depends(authenticate)]) -> None:
-    user_tasks = tasks[email]
-    for i, t in enumerate(user_tasks):
-        if t["id"] == task_id:
-            del user_tasks[i]
-            return
-    raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+def delete_task(
+    task_id: int,
+    current_user: Annotated[models.User, Depends(authenticate)],
+    db: Session = Depends(get_db),
+) -> None:
+    task = (
+        db.query(models.Task)
+        .filter(models.Task.id == task_id, models.Task.owner_email == current_user.email)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+    db.delete(task)
+    db.commit()
