@@ -28,6 +28,11 @@ class TaskCreate(BaseModel):
     deadline: datetime
 
 
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    deadline: datetime | None = None
+
+
 class Task(BaseModel):
     id: int
     title: str
@@ -77,6 +82,22 @@ def create_task(
 @app.get("/tasks", response_model=list[Task])
 def list_tasks(email: Annotated[str, Depends(authenticate)]) -> list[Task]:
     return [Task(**t) for t in tasks[email]]
+
+
+@app.patch("/tasks/{task_id}", response_model=Task)
+def update_task(
+    task_id: int,
+    payload: TaskUpdate,
+    email: Annotated[str, Depends(authenticate)],
+) -> Task:
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")
+    for t in tasks[email]:
+        if t["id"] == task_id:
+            t.update(updates)
+            return Task(**t)
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
 
 
 @app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
