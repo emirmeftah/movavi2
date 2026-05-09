@@ -162,6 +162,14 @@ def delete_task(
 
 # ---------- Привычки ----------
 
+@app.get("/habits", response_model=list[HabitResponse])
+def list_my_habits(
+    current_user: Annotated[models.User, Depends(authenticate)],
+    db: Session = Depends(get_db),
+) -> list[HabitResponse]:
+    return db.query(models.Habit).filter(models.Habit.user_id == current_user.id).all()
+
+
 @app.post("/habits", response_model=HabitResponse, status_code=status.HTTP_201_CREATED)
 def create_habit(
     payload: HabitCreate,
