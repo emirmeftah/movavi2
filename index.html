@@ -3,45 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Трекер привычек</title>
+  <title>Трекер задач</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <header>
-    <h1>Трекер привычек</h1>
-    <button id="logout-btn" hidden>Выйти</button>
+    <h1>Трекер задач</h1>
+    <p>Управляй своими задачами легко и просто</p>
   </header>
 
   <main>
+    <form id="task-form">
+      <input type="text" id="task-name" name="name" placeholder="Название задачи" required>
+      <button type="submit">Добавить</button>
+    </form>
 
-    <section id="login-section">
-      <h2>Вход</h2>
-      <form id="login-form">
-        <label for="email">Email</label>
-        <input type="email" id="email" placeholder="you@example.com" required>
+    <p id="error-msg" class="error hidden"></p>
+    <p id="loading-msg" class="loading hidden">Загрузка...</p>
 
-        <label for="password">Пароль</label>
-        <input type="password" id="password" placeholder="••••••••" required>
-
-        <p id="login-error" class="error"></p>
-        <button type="submit">Войти</button>
-      </form>
-    </section>
-
-    <section id="habits-section" hidden>
-      <h2>Мои привычки</h2>
-
-      <form id="habit-form">
-        <input type="text" id="habit-name" name="name" placeholder="Название привычки" required>
-        <button type="submit">Добавить</button>
-      </form>
-
-      <p id="habit-error" class="error"></p>
-
-      <div id="habits-list"></div>
-    </section>
-
+    <div id="tasks-list"></div>
   </main>
 
   <script src="app.js"></script>

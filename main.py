@@ -29,7 +29,7 @@ class RegisterResponse(BaseModel):
 
 class TaskCreate(BaseModel):
     title: str
-    deadline: datetime
+    deadline: datetime | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -40,7 +40,7 @@ class TaskUpdate(BaseModel):
 class TaskResponse(BaseModel):
     id: int
     title: str
-    deadline: datetime
+    deadline: datetime | None
     created_at: datetime
 
     class Config:
