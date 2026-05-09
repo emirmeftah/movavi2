@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -12,6 +13,15 @@ from database import Base, engine, get_db
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Registration & Tasks API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 security = HTTPBasic()
 
 
