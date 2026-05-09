@@ -47,6 +47,22 @@ class TaskResponse(BaseModel):
         from_attributes = True
 
 
+class HabitCreate(BaseModel):
+    title: str
+    description: str | None = None
+
+
+class HabitResponse(BaseModel):
+    id: int
+    title: str
+    description: str | None
+    created_at: datetime
+    user_id: int
+
+    class Config:
+        from_attributes = True
+
+
 # ---------- Аутентификация ----------
 
 def authenticate(
@@ -142,3 +158,31 @@ def delete_task(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
     db.delete(task)
     db.commit()
+
+
+# ---------- Привычки ----------
+
+@app.post("/habits", response_model=HabitResponse, status_code=status.HTTP_201_CREATED)
+def create_habit(
+    payload: HabitCreate,
+    current_user: Annotated[models.User, Depends(authenticate)],
+    db: Session = Depends(get_db),
+) -> HabitResponse:
+    habit = models.Habit(
+        title=payload.title,
+        description=payload.description,
+        created_at=datetime.utcnow(),
+        user_id=current_user.id,
+    )
+    db.add(habit)
+    db.commit()
+    db.refresh(habit)
+    return habit
+
+
+@app.get("/users/{user_id}/habits", response_model=list[HabitResponse])
+def get_user_habits(user_id: int, db: Session = Depends(get_db)) -> list[HabitResponse]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    return user.habits

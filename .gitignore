@@ -2,4 +2,4 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-*.db
+# app.db intentionally tracked for test data

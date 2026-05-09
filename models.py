@@ -14,6 +14,7 @@ class User(Base):
     password = Column(String, nullable=False)
 
     tasks = relationship("Task", back_populates="owner", cascade="all, delete")
+    habits = relationship("Habit", back_populates="owner", cascade="all, delete")
 
 
 class Task(Base):
@@ -26,3 +27,15 @@ class Task(Base):
     owner_email = Column(String, ForeignKey("users.email"), nullable=False)
 
     owner = relationship("User", back_populates="tasks")
+
+
+class Habit(Base):
+    __tablename__ = "habits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    owner = relationship("User", back_populates="habits")
