@@ -45,6 +45,7 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     title: str | None = None
     deadline: datetime | None = None
+    completed: bool | None = None
 
 
 class TaskResponse(BaseModel):
@@ -52,9 +53,17 @@ class TaskResponse(BaseModel):
     title: str
     deadline: datetime | None
     created_at: datetime
+    completed: bool
 
     class Config:
         from_attributes = True
+
+
+class AnalyticsResponse(BaseModel):
+    total: int
+    completed: int
+    pending: int
+    completion_rate: float
 
 
 class HabitCreate(BaseModel):
@@ -113,6 +122,7 @@ def create_task(
         title=payload.title,
         deadline=payload.deadline,
         created_at=datetime.utcnow(),
+        completed=False,
         owner_email=current_user.email,
     )
     db.add(task)
@@ -168,6 +178,19 @@ def delete_task(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
     db.delete(task)
     db.commit()
+
+
+@app.get("/tasks/analytics", response_model=AnalyticsResponse)
+def get_analytics(
+    current_user: Annotated[models.User, Depends(authenticate)],
+    db: Session = Depends(get_db),
+) -> AnalyticsResponse:
+    all_tasks = db.query(models.Task).filter(models.Task.owner_email == current_user.email).all()
+    total = len(all_tasks)
+    completed = sum(1 for t in all_tasks if t.completed)
+    pending = total - completed
+    rate = round(completed / total * 100, 1) if total else 0.0
+    return AnalyticsResponse(total=total, completed=completed, pending=pending, completion_rate=rate)
 
 
 # ---------- Привычки ----------

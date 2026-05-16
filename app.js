@@ -1,62 +1,43 @@
-// ════════════════════════════════════════════════════════════
-//  Трекер задач — клиентская логика
-//  Бэкенд: FastAPI на http://localhost:8000
-//  Эндпоинты: GET /tasks, POST /tasks, DELETE /tasks/{id}
-// ════════════════════════════════════════════════════════════
+const API      = 'http://localhost:8000';
+const AUTH     = 'Basic ' + btoa('alice@test.com:alice123');
 
-// Базовый URL API
-const API = 'http://localhost:8000';
-
-// user_id = 1 захардкожен — это тестовый пользователь alice@test.com.
-// Бэкенд использует Basic Auth, поэтому шлём заголовок с креденшелами.
-const USER_ID = 1;
-const AUTH = 'Basic ' + btoa('alice@test.com:alice123');
-
-// Ссылки на DOM-элементы
 const form        = document.getElementById('task-form');
 const nameInput   = document.getElementById('task-name');
 const tasksList   = document.getElementById('tasks-list');
 const errorMsg    = document.getElementById('error-msg');
 const loadingMsg  = document.getElementById('loading-msg');
+const analytics   = document.getElementById('analytics');
+const statTotal   = document.getElementById('stat-total');
+const statDone    = document.getElementById('stat-done');
+const statPending = document.getElementById('stat-pending');
+const statRate    = document.getElementById('stat-rate');
 
 
-// ── Утилиты для UI ──────────────────────────────────────────
+// ── Утилиты ─────────────────────────────────────────────────
 
-// Показать сообщение об ошибке
-function showError(message) {
-  errorMsg.textContent = message;
+function showError(msg) {
+  errorMsg.textContent = msg;
   errorMsg.classList.remove('hidden');
 }
+function hideError() { errorMsg.classList.add('hidden'); }
+function showLoading() { loadingMsg.classList.remove('hidden'); }
+function hideLoading() { loadingMsg.classList.add('hidden'); }
 
-// Скрыть сообщение об ошибке
-function hideError() {
-  errorMsg.classList.add('hidden');
-}
-
-// Показать индикатор загрузки
-function showLoading() {
-  loadingMsg.classList.remove('hidden');
-}
-
-// Скрыть индикатор загрузки
-function hideLoading() {
-  loadingMsg.classList.add('hidden');
-}
-
-// Преобразовать ISO-дату в человекочитаемый формат "ДД.ММ.ГГГГ"
 function formatDate(iso) {
-  return new Date(iso).toLocaleDateString('ru-RU');
+  return new Date(iso).toLocaleDateString('ru-RU', {
+    day: '2-digit', month: 'short'
+  });
 }
 
 
-// ── Создание DOM-карточки задачи ────────────────────────────
+// ── DOM-карточка задачи ──────────────────────────────────────
 
 function createTaskCard(task) {
   const card = document.createElement('div');
-  card.className = 'task-card';
-  card.dataset.id = task.id; // запоминаем id, чтобы потом найти карточку
+  card.className = 'task-card' + (task.completed ? ' completed' : '');
+  card.dataset.id = task.id;
 
-  // Блок с названием и датой
+  // Название + дата
   const info = document.createElement('div');
   info.className = 'task-info';
 
@@ -71,115 +52,131 @@ function createTaskCard(task) {
   info.appendChild(nameEl);
   info.appendChild(dateEl);
 
-  // Кнопка удаления
-  const deleteBtn = document.createElement('button');
-  deleteBtn.className = 'delete-btn';
-  deleteBtn.textContent = 'Удалить';
-  deleteBtn.addEventListener('click', () => deleteTask(task.id));
+  // Кнопка "Выполнено" ✓
+  const doneBtn = document.createElement('button');
+  doneBtn.className = 'done-btn';
+  doneBtn.title = task.completed ? 'Отменить' : 'Выполнено';
+  doneBtn.addEventListener('click', () => toggleComplete(task.id, task.completed));
 
+  // Кнопка удаления ×
+  const delBtn = document.createElement('button');
+  delBtn.className = 'delete-btn';
+  delBtn.title = 'Удалить';
+  delBtn.addEventListener('click', () => deleteTask(task.id));
+
+  card.appendChild(doneBtn);
   card.appendChild(info);
-  card.appendChild(deleteBtn);
+  card.appendChild(delBtn);
 
   return card;
 }
 
 
-// ── Запросы к API ───────────────────────────────────────────
+// ── API-запросы ──────────────────────────────────────────────
 
-// Загрузить все задачи и отрисовать их
 async function loadTasks() {
   hideError();
   showLoading();
-
   try {
     const res = await fetch(`${API}/tasks`, {
       headers: { 'Authorization': AUTH },
     });
-
-    if (!res.ok) {
-      throw new Error('Не удалось загрузить задачи');
-    }
-
+    if (!res.ok) throw new Error('Не удалось загрузить задачи');
     const tasks = await res.json();
-
-    // Очищаем список и рендерим карточки
     tasksList.innerHTML = '';
-    tasks.forEach(task => {
-      tasksList.appendChild(createTaskCard(task));
-    });
-  } catch (err) {
-    showError(err.message);
+    tasks.forEach(t => tasksList.appendChild(createTaskCard(t)));
+    await loadAnalytics();
+  } catch (e) {
+    showError(e.message);
   } finally {
     hideLoading();
   }
 }
 
-// Добавить новую задачу
 async function addTask(name) {
   hideError();
-
   try {
     const res = await fetch(`${API}/tasks`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': AUTH,
-      },
-      // user_id определяется по AUTH-заголовку, в теле — только название
-      body: JSON.stringify({ title: name, user_id: USER_ID }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': AUTH },
+      body: JSON.stringify({ title: name }),
     });
-
-    if (!res.ok) {
-      throw new Error('Не удалось добавить задачу');
-    }
-
+    if (!res.ok) throw new Error('Не удалось добавить задачу');
     const task = await res.json();
-
-    // Добавляем карточку в DOM без перезагрузки
     tasksList.appendChild(createTaskCard(task));
-  } catch (err) {
-    showError(err.message);
+    await loadAnalytics();
+  } catch (e) {
+    showError(e.message);
   }
 }
 
-// Удалить задачу
+async function toggleComplete(id, currentState) {
+  hideError();
+  try {
+    const res = await fetch(`${API}/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': AUTH },
+      body: JSON.stringify({ completed: !currentState }),
+    });
+    if (!res.ok) throw new Error('Не удалось обновить задачу');
+    const updated = await res.json();
+
+    // Заменяем карточку на обновлённую (с нужным состоянием)
+    const old = tasksList.querySelector(`[data-id="${id}"]`);
+    if (old) old.replaceWith(createTaskCard(updated));
+    await loadAnalytics();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
 async function deleteTask(id) {
   hideError();
-
   try {
     const res = await fetch(`${API}/tasks/${id}`, {
       method: 'DELETE',
       headers: { 'Authorization': AUTH },
     });
+    if (!res.ok) throw new Error('Не удалось удалить задачу');
+    tasksList.querySelector(`[data-id="${id}"]`)?.remove();
+    await loadAnalytics();
+  } catch (e) {
+    showError(e.message);
+  }
+}
 
-    if (!res.ok) {
-      throw new Error('Не удалось удалить задачу');
-    }
+async function loadAnalytics() {
+  try {
+    const res = await fetch(`${API}/tasks/analytics`, {
+      headers: { 'Authorization': AUTH },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
 
-    // Убираем карточку из DOM по data-id
-    const card = tasksList.querySelector(`[data-id="${id}"]`);
-    if (card) card.remove();
-  } catch (err) {
-    showError(err.message);
+    statTotal.textContent   = data.total;
+    statDone.textContent    = data.completed;
+    statPending.textContent = data.pending;
+    statRate.textContent    = data.completion_rate + '%';
+
+    // Показываем панель только если есть задачи
+    analytics.classList.toggle('hidden', data.total === 0);
+  } catch (_) {
+    // аналитика не критична — молча игнорируем
   }
 }
 
 
-// ── Обработчики событий ─────────────────────────────────────
+// ── События ──────────────────────────────────────────────────
 
-// Сабмит формы — добавить задачу
 form.addEventListener('submit', async (e) => {
-  e.preventDefault(); // не перезагружаем страницу
-
+  e.preventDefault();
   const name = nameInput.value.trim();
   if (!name) return;
-
   await addTask(name);
-  nameInput.value = ''; // очищаем поле после добавления
+  nameInput.value = '';
 });
 
 
-// ── Старт ───────────────────────────────────────────────────
+// ── Старт ────────────────────────────────────────────────────
 
-// При загрузке страницы сразу подгружаем список задач
 loadTasks();

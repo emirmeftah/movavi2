@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -24,6 +24,7 @@ class Task(Base):
     title = Column(String, nullable=False)
     deadline = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    completed = Column(Boolean, default=False, nullable=False)
     owner_email = Column(String, ForeignKey("users.email"), nullable=False)
 
     owner = relationship("User", back_populates="tasks")
